@@ -11,10 +11,16 @@ const { globalLimiter } = require('./core/ConcurrencyLimiter')
 const platformFactory = require('./platforms/PlatformFactory')
 const NeteasePlatform = require('./platforms/netease/NeteasePlatform')
 const QQMusicPlatform = require('./platforms/qqmusic/QQMusicPlatform')
+const KugouPlatform = require('./platforms/kugou/KugouPlatform')
+const KuwoPlatform = require('./platforms/kuwo/KuwoPlatform')
+const BilibiliPlatform = require('./platforms/bilibili/BilibiliPlatform')
+
+// 导入 OS 项目兼容路由
+const { registerOSCompatibleRoutes } = require('./routes/os-adapter')
 
 /**
  * 多平台音乐API服务器
- * 支持网易云音乐、QQ音乐等多个平台
+ * 支持网易云音乐、QQ音乐、酷狗音乐、酷我音乐、B站等多个平台
  */
 class MultiPlatformServer {
   constructor() {
@@ -61,6 +67,21 @@ class MultiPlatformServer {
         name: 'qqmusic'
       })
 
+      // 注册酷狗音乐平台
+      platformFactory.register('kugou', KugouPlatform, {
+        name: 'kugou'
+      })
+
+      // 注册酷我音乐平台
+      platformFactory.register('kuwo', KuwoPlatform, {
+        name: 'kuwo'
+      })
+
+      // 注册B站平台
+      platformFactory.register('bilibili', BilibiliPlatform, {
+        name: 'bilibili'
+      })
+
       // 初始化所有平台
       await platformFactory.initialize()
 
@@ -85,6 +106,26 @@ class MultiPlatformServer {
 
     // Cookie 解析中间件
     this.app.use(cookieParser())
+
+    // 酷狗平台 Cookie 设置中间件
+    this.app.use((req, res, next) => {
+      const cookies = req.cookies || {}
+      const isHttps = req.protocol === 'https'
+      const cookieSuffix = isHttps ? '; PATH=/; SameSite=None; Secure' : '; PATH=/'
+
+      const ensureCookie = (key, value) => {
+        if (Object.prototype.hasOwnProperty.call(cookies, key)) return
+        cookies[key] = String(value)
+        res.append('Set-Cookie', `${key}=${cookies[key]}${cookieSuffix}`)
+      }
+
+      // 为酷狗平台设置必要的 cookie
+      // 使用固定的 mid 值，这是酷狗 API 所需的设备标识
+      ensureCookie('KUGOU_API_MID', '334689572176563962868706300678062568191')
+
+      req.cookies = cookies
+      next()
+    })
 
     // 静态文件服务
     this.app.use(express.static(path.join(__dirname, 'public')))
@@ -112,6 +153,9 @@ class MultiPlatformServer {
    * 设置路由
    */
   async setupRoutes() {
+    // 注册 OS 项目兼容路由（必须在其他路由之前注册）
+    registerOSCompatibleRoutes(this.app, this.handleResourceAPI.bind(this), platformFactory)
+
     // 健康检查/状态接口
     this.app.get('/status', (req, res) => {
       const platforms = platformFactory.getAvailablePlatforms()
