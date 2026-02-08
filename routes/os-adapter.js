@@ -21,6 +21,10 @@ function registerOSCompatibleRoutes(app, handleResourceAPI, platformFactory) {
     if (req.query.platform || req.body?.platform) {
       return next()
     }
+    // 合并 body 参数到 query（os 项目使用 POST 请求）
+    if (req.body) {
+      req.query = { ...req.query, ...req.body }
+    }
     req.query.platform = 'netease'
     await handleResourceAPI(req, res, 'search')
   })
@@ -29,6 +33,10 @@ function registerOSCompatibleRoutes(app, handleResourceAPI, platformFactory) {
   app.all('/song', async (req, res, next) => {
     if (req.query.platform || req.body?.platform) {
       return next()
+    }
+    // 合并 body 参数到 query
+    if (req.body) {
+      req.query = { ...req.query, ...req.body }
     }
     req.query.platform = 'netease'
     await handleResourceAPI(req, res, 'song/url')
